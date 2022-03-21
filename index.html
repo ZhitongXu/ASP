@@ -1,0 +1,309 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bubble Chart</title>
+  <meta name="description" content="Using D3v4 to create a Bubble chart. Based on NYT visualization">
+  <meta name="author" content="Jim Vallandingham">
+
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/bubble_chart.css">
+
+  <style type="text/css">
+
+    body {
+      font: 10px sans-serif;
+    }
+  
+    .legend {
+      font-size: 12px;
+      font-family: sans-serif;
+    }
+  
+    .legend path,
+    .legend line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+      opacity: 1;
+    }
+  
+    .circle-legend line {
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+  
+    .circle-legend circle {
+      stroke: #ccc;
+      stroke-dasharray: 4, 2;
+      fill: none;
+    }
+  
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>ASP and NCitation Median by Subject</h1>
+    <div id="toolbar">
+      <a href="#" id="allasp" class="button active" onclick="showvis()">ASP</a>
+      <a href="#" id="yearasp" class="button" onclick="showvis()">ASP by Group</a>
+      <a href="#" id="allnc" class="button" onclick="showvis()">NCitation</a>
+      <a href="#" id="yearnc" class="button" onclick="showvis()">NCitation by Group</a>
+      <a href="#" id="ref" class="button" onclick="chordRef()">Chord Diagram of Ref</a>
+      <a href="#" id="cites" class="button" onclick="chordCites()">Chord Diagram of Cites</a>
+    </div>
+    <div id="vis"></div>
+
+    <div id="chordref" style="display: none;">
+		</br>
+		</br>
+		<iframe src="./chord/ref.html" height="600" width="900" allowfullscreen="" frameborder="0"></iframe>
+		</br>
+	</div>      
+	
+	<div id="chordcites" style="display: none;">
+		</br>
+		</br>
+		<iframe src="./chord/cites.html" height="600" width="900" allowfullscreen="" frameborder="0"></iframe>
+		</br>
+	</div>  
+
+    <!-- FOOTER -->
+    <!-- div class="footer">
+      <p>A demonstration of animated bubble charts in JavaScript and D3.js</p>
+      <strong>This version of the code uses D3v4!</strong>
+      <p><a href="http://vallandingham.me/bubble_charts_with_d3v4.html">Blog Post</a> | <a href="https://github.com/vlandham/bubble_chart_v4">Code</a></p>
+    </div -->
+    <!-- END FOOTER -->
+
+  </div>
+
+  <!-- ADD LEGEND -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/6.2.0/d3.min.js"></script>
+  <div id="legend" class="container">
+    <svg></svg>
+  </div>
+
+  <!-- div id="circle-legend" class="container">
+  </div -->
+  
+  <!-- LEGEND SCRIPT -->
+  <script>
+    function legend({
+      color,
+      title,
+      tickSize = 6,
+      width = 640,
+      height = 44 + tickSize,
+      marginTop = 18,
+      marginRight = 0,
+      marginBottom = 16 + tickSize,
+      marginLeft = 0,
+      ticks = width / 64,
+      tickFormat,
+      tickValues
+    } = {}) {
+      const svg = d3.select("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("viewBox", [0, 0, width, height])
+        .style("overflow", "visible")
+        .style("display", "block");
+
+      let tickAdjust = g => g.selectAll(".tick line").attr("y1", marginTop + marginBottom - height);
+      let x;
+
+      // Continuous
+      if (color.interpolate) {
+        const n = Math.min(color.domain().length, color.range().length);
+
+        x = color.copy().rangeRound(d3.quantize(d3.interpolate(marginLeft, width - marginRight), n));
+
+        svg.append("image")
+          .attr("x", marginLeft)
+          .attr("y", marginTop)
+          .attr("width", width - marginLeft - marginRight)
+          .attr("height", height - marginTop - marginBottom)
+          .attr("preserveAspectRatio", "none")
+          .attr("xlink:href", ramp(color.copy().domain(d3.quantize(d3.interpolate(0, 1), n))).toDataURL());
+      }
+
+      // Sequential
+      else if (color.interpolator) {
+        x = Object.assign(color.copy()
+          .interpolator(d3.interpolateRound(marginLeft, width - marginRight)), {
+            range() {
+              return [marginLeft, width - marginRight];
+            }
+          });
+
+        svg.append("image")
+          .attr("x", marginLeft)
+          .attr("y", marginTop)
+          .attr("width", width - marginLeft - marginRight)
+          .attr("height", height - marginTop - marginBottom)
+          .attr("preserveAspectRatio", "none")
+          .attr("xlink:href", ramp(color.interpolator()).toDataURL());
+
+        // scaleSequentialQuantile doesn’t implement ticks or tickFormat.
+        if (!x.ticks) {
+          if (tickValues === undefined) {
+            const n = Math.round(ticks + 1);
+            tickValues = d3.range(n).map(i => d3.quantile(color.domain(), i / (n - 1)));
+          }
+          if (typeof tickFormat !== "function") {
+            tickFormat = d3.format(tickFormat === undefined ? ",f" : tickFormat);
+          }
+        }
+      }
+
+      // Threshold
+      else if (color.invertExtent) {
+        const thresholds = color.thresholds ? color.thresholds() // scaleQuantize
+          :
+          color.quantiles ? color.quantiles() // scaleQuantile
+          :
+          color.domain(); // scaleThreshold
+
+        const thresholdFormat = tickFormat === undefined ? d => d :
+          typeof tickFormat === "string" ? d3.format(tickFormat) :
+          tickFormat;
+
+        x = d3.scaleLinear()
+          .domain([-1, color.range().length - 1])
+          .rangeRound([marginLeft, width - marginRight]);
+
+        svg.append("g")
+          .selectAll("rect")
+          .data(color.range())
+          .join("rect")
+          .attr("x", (d, i) => x(i - 1))
+          .attr("y", marginTop)
+          .attr("width", (d, i) => x(i) - x(i - 1))
+          .attr("height", height - marginTop - marginBottom)
+          .attr("fill", d => d);
+
+        tickValues = d3.range(thresholds.length);
+        tickFormat = i => thresholdFormat(thresholds[i], i);
+      }
+
+      // Ordinal
+      else {
+        x = d3.scaleBand()
+          .domain(color.domain())
+          .rangeRound([marginLeft, width - marginRight]);
+
+        svg.append("g")
+          .selectAll("rect")
+          .data(color.domain())
+          .join("rect")
+          .attr("x", x)
+          .attr("y", marginTop)
+          .attr("width", Math.max(0, x.bandwidth() - 1))
+          .attr("height", height - marginTop - marginBottom)
+          .attr("fill", color);
+
+        tickAdjust = () => {};
+      }
+
+      svg.append("g")
+        .attr("transform", `translate(0,${height - marginBottom})`)
+        .call(d3.axisBottom(x)
+          .ticks(ticks, typeof tickFormat === "string" ? tickFormat : undefined)
+          .tickFormat(typeof tickFormat === "function" ? tickFormat : undefined)
+          .tickSize(tickSize)
+          .tickValues(tickValues))
+        .call(tickAdjust)
+        .call(g => g.select(".domain").remove())
+        .call(g => g.append("text")
+          .attr("x", marginLeft)
+          .attr("y", marginTop + marginBottom - height - 6)
+          .attr("fill", "currentColor")
+          .attr("text-anchor", "start")
+          .attr("font-weight", "bold")
+          .text(title));
+
+      return svg.node();
+    }
+
+    function ramp(color, n = 256) {
+      var canvas = document.createElement('canvas');
+      canvas.width = n;
+      canvas.height = 1;
+      const context = canvas.getContext("2d");
+      for (let i = 0; i < n; ++i) {
+        context.fillStyle = color(i / (n - 1));
+        context.fillRect(i, 0, 1, 1);
+      }
+      return canvas;
+    }
+
+    legend({
+      color: d3.scaleOrdinal(['#1f77b4','#ff7f0e','#2ca02c','#d62728', '#9467bd','#8c564b', '#e377c2', '#bcbd22', '#17becf', '#6075ff','#800080', '#1E90FF','#edb34a','#7f7f7f'])
+                .domain(['Sci','Med','Bio','Eng','Soc-Sci','Geo','C-Sci','Mgmt','Psy','Law-Plcy','Edu','Bldg','Cty-dev','Arts']),
+      title: "Group Name by Color:",
+      tickSize: 0
+    })
+  </script>
+  <!-- END LEGEND SCRIPT -->
+  <!-- END LEGEND -->
+
+  <!-- Circular Legend -->
+  <script src="./src/d3.v3.min.js"></script>
+  <!-- Circular Legend -->
+  <script src="./src/circle-legend.js"></script>
+  <script type="text/javascript">
+
+    //var margin = {top: 20, right: 100, bottom: 20, left: 100};
+
+    //var width = 940 - margin.left - margin.right,
+      //height = 600 - margin.top - margin.bottom;
+
+    //var svg = d3.select('body').append('svg')
+    //var svg = d3.select('#circle-legend').append('svg')
+    var svg = d3.select('#legend').append('svg')
+        .attr('width', 200)//width + margin.left + margin.right)
+        .attr('height', 200)//height + margin.top + margin.bottom)
+
+    svg = svg.append('g')
+        .attr('transform', 'translate(' + 50 + ',' + 50 + ')');
+        //.attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+    var scale = d3.scale.sqrt()
+        .range([2, 30])
+        .domain([0.5, 0.729]);
+
+    var circleKey = circleLegend()
+        .scale(scale)
+        .tickValues([0.5,0.55,0.6,0.65,0.7,0.729])
+        .orient("left") //default
+
+    svg.append('g')
+      .attr('transform', 'translate(20, 20)')
+      .call(circleKey)
+
+    //2
+    scale
+        .domain([0.5, 24]);
+
+    var circleKey = circleLegend()
+        .scale(scale)
+        .tickValues([0.5,5,10,15,20,24])
+        .orient("left") //default
+
+    svg.append('g')
+      .attr('transform', 'translate(120, 20)')
+      .call(circleKey)
+
+  </script>
+
+
+  <script src="//d3js.org/d3.v4.min.js"></script>
+  <script src="src/tooltip.js"></script>
+  <script src="src/bubble_chart.js"></script>
+  <script src="src/chord_diagram.js"></script>
+
+</body>
+</html>
