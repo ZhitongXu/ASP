@@ -530,7 +530,7 @@ function addCommas(nStr) {
 
 // Load the data.
 //d3.csv('data/gates_money.csv', display);
-d3.csv('data/ASP_and_NCitation_stat.csv', display);
+d3.csv('https://github.com/ZhitongXu/ASP/blob/main/data/ASP_and_NCitation_stat.csv', display);
 
 // setup the buttons.
 setupButtons();
